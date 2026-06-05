@@ -1,0 +1,134 @@
+configfile: "config/config.yaml"
+
+SAMPLE = config["sample"]
+REF = config["reference"]
+
+rule all:
+    input:
+        expand("results/report/{sample}_report.pdf",
+        sample=[config["sample"]])
+
+rule fastqc:
+    input:
+        r1="samples/{sample}_R1.fastq.gz",
+        r2="samples/{sample}_R2.fastq.gz"
+    output:
+        html1="results/qc/{sample}_R1_fastqc.html",
+        html2="results/qc/{sample}_R2_fastqc.html"
+    shell:
+        """
+        mkdir -p results/qc
+        fastqc {input.r1} {input.r2} -o /results/qc
+        """
+
+rule fastp:
+    input:
+        r1="samples/{sample}_R1.fastq.gz",
+        r2="samples/{sample}_R2.fastq.gz"
+    output:
+        r1="results/trimmed/{sample}_R1.trim.fastq.gz",
+        r2="results/trimmed/{sample}_R2.trim.fastq.gz"
+    shell:
+        """
+        mkdir -p results/trimmed
+        fastp \
+          -i {input.r1} \
+          -I {input.r2} \
+          -o {output.r1} \
+          -O {output.r2}
+        """
+
+rule bwa:
+    input:
+        r1="results/trimmed/{sample}_R1.trim.fastq.gz",
+        r2="results/trimmed/{sample}_R2.trim.fastq.gz",
+        ref=REF
+    output:
+        bam="results/bam/{sample}.sorted.bam"
+    threads:
+        config["threads"]
+    shell:
+        """
+        mkdir -p results/bam
+
+        bwa mem -t {threads} {input.ref} \
+        {input.r1} {input.r2} | \
+        samtools sort -o {output.bam}
+
+        samtools index {output.bam}
+        """
+
+rule variant_calling:
+    input:
+        bam="results/bam/{sample}.sorted.bam",
+        ref=REF
+    output:
+        vcf="results/vcf/{sample}.vcf.gz"
+    shell:
+        """
+        mkdir -p results/vcf
+
+        bcftools mpileup \
+        -Ou \
+        -f {input.ref} \
+        {input.bam} | \
+        bcftools call -mv \
+        -Oz \
+        -o {output.vcf}
+
+        tabix -p vcf {output.vcf}
+        """
+
+rule parse_pgx:
+    input:
+        "results/vcf/{sample}.vcf.gz"
+    output:
+        "results/pgx/{sample}_pgx_variants.tsv"
+    shell:
+        """
+        mkdir -p results/pgx
+
+        python /scripts/parse_vcf.py \
+        {input} \
+        {output}
+        """
+
+rule phenotype:
+    input:
+        "results/pgx/{sample}_pgx_variants.tsv"
+    output:
+        "results/pgx/{sample}_phenotypes.tsv"
+    shell:
+        """
+        python /scripts/phenotype_assignment.py \
+        {input} \
+        {output}
+        """
+
+rule drug_annotation:
+    input:
+        "results/pgx/{sample}_phenotypes.tsv"
+    output:
+        "results/pgx/{sample}_drug_recommendations.tsv"
+    shell:
+        """
+        python /scripts/annotate_drugs.py \
+        {input} \
+        {output}
+        """
+
+rule report:
+    input:
+        phenotypes="results/pgx/{sample}_phenotypes.tsv",
+        drugs="results/pgx/{sample}_drug_recommendations.tsv"
+    output:
+        "results/report/{sample}_report.pdf"
+    shell:
+        """
+        mkdir -p results/report
+
+        python /scripts/generate_report.py \
+        {input.phenotypes} \
+        {input.drugs} \
+        {output}
+        """
