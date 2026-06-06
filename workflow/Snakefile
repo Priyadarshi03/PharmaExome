@@ -10,8 +10,8 @@ rule all:
 
 rule fastqc:
     input:
-        r1="samples/{sample}_R1.fastq.gz",
-        r2="samples/{sample}_R2.fastq.gz"
+        r1="samples/{sample}_R1_001.fastq.gz",
+        r2="samples/{sample}_R2_001.fastq.gz"
     output:
         html1="results/qc/{sample}_R1_fastqc.html",
         html2="results/qc/{sample}_R2_fastqc.html"
@@ -23,8 +23,8 @@ rule fastqc:
 
 rule fastp:
     input:
-        r1="samples/{sample}_R1.fastq.gz",
-        r2="samples/{sample}_R2.fastq.gz"
+        r1="samples/{sample}_R1_001.fastq.gz",
+        r2="samples/{sample}_R2_001.fastq.gz"
     output:
         r1="results/trimmed/{sample}_R1.trim.fastq.gz",
         r2="results/trimmed/{sample}_R2.trim.fastq.gz"
@@ -64,6 +64,8 @@ rule variant_calling:
         ref=REF
     output:
         vcf="results/vcf/{sample}.vcf.gz"
+    threads: 12
+
     shell:
         """
         mkdir -p results/vcf
@@ -72,24 +74,68 @@ rule variant_calling:
         -Ou \
         -f {input.ref} \
         {input.bam} | \
-        bcftools call -mv \
+        bcftools call \
+        --threads {threads} \
+        -mv \
         -Oz \
         -o {output.vcf}
 
         tabix -p vcf {output.vcf}
         """
 
+rule pgx_filter:
+    input:
+        vcf="results/vcf/{sample}.vcf.gz",
+        bed="resources/pgx_genes.bed"
+    output:
+        "results/pgx/{sample}.pgx.vcf"
+    shell:
+        """
+        mkdir -p results/pgx
+
+        bedtools intersect \
+            -header \
+            -a {input.vcf} \
+            -b {input.bed} \
+            > {output}
+        """
+
+# rule vep_annotation:
+#     input:
+#         "results/vcf/{sample}.vcf.gz"
+#     output:
+#         "results/vep/{sample}.vep.vcf.gz"
+#     threads: 8
+#     shell:
+#         """
+#         mkdir -p results/vep
+
+#         vep \
+#             -i {input} \
+#             -o STDOUT \
+#             --vcf \
+#             --cache \
+#             --assembly GRCh38 \
+#             --fork {threads} | \
+#         bgzip > {output}
+
+#         tabix -p vcf {output}
+#         """
+
+
 rule parse_pgx:
     input:
-        "results/vcf/{sample}.vcf.gz"
+        vcf="results/pgx/{sample}.pgx.vcf",
+        bed="resources/pgx_genes.bed"
     output:
         "results/pgx/{sample}_pgx_variants.tsv"
     shell:
         """
         mkdir -p results/pgx
 
-        python /scripts/parse_vcf.py \
-        {input} \
+        python scripts/parse_vcf.py \
+        {input.vcf} \
+        {input.bed} \
         {output}
         """
 
@@ -100,7 +146,7 @@ rule phenotype:
         "results/pgx/{sample}_phenotypes.tsv"
     shell:
         """
-        python /scripts/phenotype_assignment.py \
+        python scripts/phenotype_assignment.py \
         {input} \
         {output}
         """
@@ -112,7 +158,7 @@ rule drug_annotation:
         "results/pgx/{sample}_drug_recommendations.tsv"
     shell:
         """
-        python /scripts/annotate_drugs.py \
+        python scripts/annotate_drugs.py \
         {input} \
         {output}
         """
@@ -127,7 +173,7 @@ rule report:
         """
         mkdir -p results/report
 
-        python /scripts/generate_report.py \
+        python scripts/generate_report.py \
         {input.phenotypes} \
         {input.drugs} \
         {output}

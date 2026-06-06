@@ -1,8 +1,8 @@
-sample: IHP2100201042
+sample: test_S153_L007
 
 reference: resources/reference/Homo_sapiens_assembly38.fasta
 
-threads: 4
+threads: 12
 
 pgx_genes:
   - CYP2C19
