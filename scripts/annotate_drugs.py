@@ -6,42 +6,18 @@ phenotypes = pd.read_csv(
     sep="\t"
 )
 
-recommendations = []
-
-for _, row in phenotypes.iterrows():
-
-    gene = row["GENE"]
-
-    if gene == "CYP2C19":
-
-        recommendations.append(
-            [
-                gene,
-                "Clopidogrel",
-                "Consider alternative therapy"
-            ]
-        )
-
-    elif gene == "SLCO1B1":
-
-        recommendations.append(
-            [
-                gene,
-                "Simvastatin",
-                "Lower dose recommended"
-            ]
-        )
-
-df = pd.DataFrame(
-    recommendations,
-    columns=[
-        "GENE",
-        "DRUG",
-        "RECOMMENDATION"
-    ]
+guidelines = pd.read_csv(
+    "resources/drug_guidelines.tsv",
+    sep="\t"
 )
 
-df.to_csv(
+recommendations = guidelines[
+    guidelines["GENE"].isin(
+        phenotypes["GENE"]
+    )
+]
+
+recommendations.to_csv(
     sys.argv[2],
     sep="\t",
     index=False

@@ -40,6 +40,7 @@ with open(vcf) as fh:
         rows.append([
             chrom,
             pos,
+            cols[2],
             cols[3],
             cols[4],
             gene
@@ -47,5 +48,5 @@ with open(vcf) as fh:
 
 pd.DataFrame(
     rows,
-    columns=["CHROM","POS","REF","ALT","GENE"]
+    columns=["CHROM","POS","ID","REF","ALT","GENE"]
 ).to_csv(out, sep="\t", index=False)
