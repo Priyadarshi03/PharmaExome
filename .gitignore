@@ -1,6 +1,6 @@
 results
 samples
-resources
+resources/reference
 .snakemake
 fastp.html
 fastp.json
