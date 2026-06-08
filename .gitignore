@@ -2,3 +2,6 @@ results
 samples
 resources
 .snakemake
+fastp.html
+fastp.json
+data_curation_scripts

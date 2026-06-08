@@ -5,20 +5,23 @@ REF = config["reference"]
 
 rule all:
     input:
-        expand("results/report/{sample}_report.pdf",
-        sample=[config["sample"]])
+        expand("results/report/{sample}_report.pdf", sample=SAMPLE),
+        expand("results/fastqc/{sample}_R1_001_fastqc.html", sample=SAMPLE),
+        expand("results/fastqc/{sample}_R2_001_fastqc.html", sample=SAMPLE)
 
 rule fastqc:
     input:
         r1="samples/{sample}_R1_001.fastq.gz",
         r2="samples/{sample}_R2_001.fastq.gz"
     output:
-        html1="results/qc/{sample}_R1_fastqc.html",
-        html2="results/qc/{sample}_R2_fastqc.html"
+        html1="results/fastqc/{sample}_R1_001_fastqc.html",
+        zip1="results/fastqc/{sample}_R1_001_fastqc.zip",
+        html2="results/fastqc/{sample}_R2_001_fastqc.html",
+        zip2="results/fastqc/{sample}_R2_001_fastqc.zip"
     shell:
         """
         mkdir -p results/qc
-        fastqc {input.r1} {input.r2} -o /results/qc
+        fastqc {input.r1} {input.r2} -o results/fastqc
         """
 
 rule fastp:
@@ -100,29 +103,6 @@ rule pgx_filter:
             > {output}
         """
 
-# rule vep_annotation:
-#     input:
-#         "results/vcf/{sample}.vcf.gz"
-#     output:
-#         "results/vep/{sample}.vep.vcf.gz"
-#     threads: 8
-#     shell:
-#         """
-#         mkdir -p results/vep
-
-#         vep \
-#             -i {input} \
-#             -o STDOUT \
-#             --vcf \
-#             --cache \
-#             --assembly GRCh38 \
-#             --fork {threads} | \
-#         bgzip > {output}
-
-#         tabix -p vcf {output}
-#         """
-
-
 rule parse_pgx:
     input:
         vcf="results/pgx/{sample}.pgx.vcf",
@@ -139,34 +119,33 @@ rule parse_pgx:
         {output}
         """
 
-rule phenotype:
-    input:
-        "results/pgx/{sample}_pgx_variants.tsv"
-    output:
-        "results/pgx/{sample}_phenotypes.tsv"
-    shell:
-        """
-        python scripts/phenotype_assignment.py \
-        {input} \
-        {output}
-        """
-
 rule drug_annotation:
     input:
-        "results/pgx/{sample}_phenotypes.tsv"
+        variants="results/pgx/{sample}_pgx_variants.tsv",
+        gene_info_path="resources/gene_info.tsv",
+        guidelines_path="resources/drug_guidelines.tsv"
+
     output:
-        "results/pgx/{sample}_drug_recommendations.tsv"
+        phenotypes_out="results/pgx/{sample}_phenotypes.tsv",
+        drug_recs_out="results/pgx/{sample}_drug_recommendations.tsv",
     shell:
         """
-        python scripts/annotate_drugs.py \
-        {input} \
-        {output}
+        mkdir -p results/report
+
+        python scripts/assign_phenotypes.py \
+        {input.variants} \
+        {input.gene_info_path} \
+        {input.guidelines_path} \
+        {output.phenotypes_out}\
+        {output.drug_recs_out}\
         """
 
 rule report:
     input:
+        metadata="samples/{sample}_metadata.tsv",
         phenotypes="results/pgx/{sample}_phenotypes.tsv",
-        drugs="results/pgx/{sample}_drug_recommendations.tsv"
+        drugs="results/pgx/{sample}_drug_recommendations.tsv",
+        variants="results/pgx/{sample}_pgx_variants.tsv"
     output:
         "results/report/{sample}_report.pdf"
     shell:
@@ -174,7 +153,9 @@ rule report:
         mkdir -p results/report
 
         python scripts/generate_report.py \
+        {input.metadata} \
         {input.phenotypes} \
         {input.drugs} \
+        {input.variants} \
         {output}
         """
